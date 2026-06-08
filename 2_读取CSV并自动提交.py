@@ -148,6 +148,10 @@ for s_index in range(total_students):
         
         wait = WebDriverWait(driver, 10) 
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR,"#submit")))
+        
+        # 强制等待一下表格的 AJAX 异步加载，防止出现数据还没刷出来导致获取到 0 条记录的情况
+        time.sleep(3)
+        
         tabelnum=driver.find_element(By.CSS_SELECTOR,"#div_talble > div > div > div > div.datagrid-view2 > div.datagrid-body")
         truenum1=tabelnum.find_elements(By.CSS_SELECTOR,"tr.datagrid-row")
         truenum=len(truenum1)
