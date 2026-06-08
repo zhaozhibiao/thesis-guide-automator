@@ -213,7 +213,25 @@ for s_index in range(total_students):
                 inputcontent = textboxes[1]
                 
             if inputcontent:
-                driver.execute_script("arguments[0].value = arguments[1]; var hidden = arguments[0].parentNode.parentNode.querySelector('input[type=hidden]'); if(hidden) hidden.value = arguments[1];", inputcontent, generated_content)
+                # 先用 send_keys 模拟真实输入
+                inputcontent.click()
+                inputcontent.clear()
+                inputcontent.send_keys(generated_content)
+                
+                # 再用增强版 JS 兜底触发和赋值隐藏域
+                js_code = """
+                    arguments[0].classList.remove('textbox-prompt');
+                    arguments[0].value = arguments[1];
+                    var hidden1 = arguments[0].parentNode.querySelector('input[type="hidden"]');
+                    var hidden2 = arguments[0].parentNode.parentNode.querySelector('input[type="hidden"]');
+                    if(hidden1) hidden1.value = arguments[1];
+                    if(hidden2) hidden2.value = arguments[1];
+                    arguments[0].dispatchEvent(new Event('input', { bubbles: true }));
+                    arguments[0].dispatchEvent(new Event('change', { bubbles: true }));
+                    arguments[0].dispatchEvent(new Event('blur', { bubbles: true }));
+                """
+                driver.execute_script(js_code, inputcontent, generated_content)
+                time.sleep(0.5)
                 
             submit_btn = driver.find_element(By.CSS_SELECTOR,"#submit_uploading")
             driver.execute_script("arguments[0].click();", submit_btn)
@@ -262,15 +280,25 @@ for s_index in range(total_students):
                 inputcontent = textboxes[1]
             
             if inputcontent:
+                # 先用 send_keys 模拟真实输入
+                inputcontent.click()
+                inputcontent.clear()
+                inputcontent.send_keys(generated_content)
+                
+                # 再用增强版 JS 兜底触发和赋值隐藏域
                 js_code = """
                     arguments[0].classList.remove('textbox-prompt');
                     arguments[0].value = arguments[1];
-                    var hidden = arguments[0].parentNode.querySelector('input.textbox-value');
-                    if(hidden) hidden.value = arguments[1];
+                    var hidden1 = arguments[0].parentNode.querySelector('input[type="hidden"]');
+                    var hidden2 = arguments[0].parentNode.parentNode.querySelector('input[type="hidden"]');
+                    if(hidden1) hidden1.value = arguments[1];
+                    if(hidden2) hidden2.value = arguments[1];
                     arguments[0].dispatchEvent(new Event('input', { bubbles: true }));
                     arguments[0].dispatchEvent(new Event('change', { bubbles: true }));
+                    arguments[0].dispatchEvent(new Event('blur', { bubbles: true }));
                 """
                 driver.execute_script(js_code, inputcontent, generated_content)
+                time.sleep(0.5)
             
             submitbutton=driver.find_element(By.CSS_SELECTOR,"#submit_uploading")
             driver.execute_script("arguments[0].click();", submitbutton)
