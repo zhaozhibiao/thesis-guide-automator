@@ -126,12 +126,13 @@ for s_index in range(total_students):
     wait = WebDriverWait(driver, 20)
     if filage==0:
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR,'[title="学生指导记录"]')))
-        frame1 = driver.find_element(By.CSS_SELECTOR,'[title="学生指导记录"]')
+        frame1 = driver.find_elements(By.CSS_SELECTOR,'[title="学生指导记录"]')[-1]
     else:
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR,'[title="添加学生指导记录"]')))
-        frame1 = driver.find_element(By.CSS_SELECTOR,'[title="添加学生指导记录"]')
+        frame1 = driver.find_elements(By.CSS_SELECTOR,'[title="添加学生指导记录"]')[-1]
     
     driver.switch_to.frame(frame1)
+    time.sleep(3) # 等待当前学生表格数据加载
     
 
     for index, (_, csv_row) in enumerate(student_records.iterrows()):
@@ -140,9 +141,9 @@ for s_index in range(total_students):
         
         driver.switch_to.default_content()
         if filage==0:
-            frame1 = driver.find_element(By.CSS_SELECTOR,'[title="学生指导记录"]')
+            frame1 = driver.find_elements(By.CSS_SELECTOR,'[title="学生指导记录"]')[-1]
         else:
-            frame1 = driver.find_element(By.CSS_SELECTOR,'[title="添加学生指导记录"]')
+            frame1 = driver.find_elements(By.CSS_SELECTOR,'[title="添加学生指导记录"]')[-1]
         driver.switch_to.frame(frame1)
         
         wait = WebDriverWait(driver, 10) 
@@ -243,7 +244,7 @@ for s_index in range(total_students):
             driver.execute_script("arguments[0].click();", tianjiabutton)
             
             driver.switch_to.default_content()
-            frame1 = driver.find_element(By.CSS_SELECTOR,'[title="添加指导记录"]')
+            frame1 = driver.find_elements(By.CSS_SELECTOR,'[title="添加指导记录"]')[-1]
             driver.switch_to.frame(frame1)
             wait = WebDriverWait(driver, 10) 
             wait.until(EC.presence_of_element_located((By.CSS_SELECTOR,".textbox-text")))
@@ -304,8 +305,13 @@ for s_index in range(total_students):
             driver.execute_script("arguments[0].click();", submitbutton)
             time.sleep(2)
 
-    # 处理完该学生，刷新学生列表
+    # 处理完该学生，关闭其弹窗并刷新列表
     driver.switch_to.default_content()
+    close_btns = driver.find_elements(By.CSS_SELECTOR, ".panel-tool-close")
+    if close_btns:
+        driver.execute_script("arguments[0].click();", close_btns[-1])
+    time.sleep(1)
+    
     wait = WebDriverWait(driver, 10) 
     wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR,'#nav > li:nth-child(5) > ul > li:nth-child(3) > a')))
     zhidao=driver.find_element(By.CSS_SELECTOR,'#nav > li:nth-child(5) > ul > li:nth-child(3) > a')
@@ -315,7 +321,7 @@ for s_index in range(total_students):
     wait.until(EC.presence_of_element_located((By.CSS_SELECTOR,'[title="指导教师提交指导记录"]')))
     frame = driver.find_element(By.CSS_SELECTOR,'[title="指导教师提交指导记录"]')
     driver.switch_to.frame(frame)
-    time.sleep(2) 
+    time.sleep(2)
 
 print("所有修改/新增任务已顺利完成！")
 driver.quit()
