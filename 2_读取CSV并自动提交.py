@@ -187,7 +187,8 @@ for s_index in range(total_students):
             wait.until(EC.presence_of_element_located((By.XPATH, '//iframe[contains(@title, "修改")]')))
             edit_frame = driver.find_element(By.XPATH, '//iframe[contains(@title, "修改")]')
             driver.switch_to.frame(edit_frame)
-            time.sleep(1)
+            # 强行等待 3 秒，确保修改弹窗里的 EasyUI 插件完全初始化完毕，防止异步加载覆盖已填入的数据
+            time.sleep(3)
             
             # 填入日期
             if date_str:
@@ -257,6 +258,8 @@ for s_index in range(total_students):
             driver.switch_to.default_content()
             frame1 = driver.find_elements(By.CSS_SELECTOR,'[title="添加指导记录"]')[-1]
             driver.switch_to.frame(frame1)
+            # 强行等待 3 秒，确保新增弹窗里的 EasyUI 插件完全初始化完毕，防止异步加载覆盖已填入的数据
+            time.sleep(3)
             wait = WebDriverWait(driver, 10) 
             wait.until(EC.presence_of_element_located((By.CSS_SELECTOR,".textbox-text")))
             textboxes = driver.find_elements(By.CSS_SELECTOR,".textbox-text")
