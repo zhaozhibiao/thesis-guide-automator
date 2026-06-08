@@ -134,22 +134,32 @@ for s_index in range(total_students):
     driver.switch_to.frame(frame1)
     time.sleep(3) # 等待当前学生表格数据加载
     
-    # 提前获取该学生的初始历史记录条数，避免在循环里反复数数和等待
+    # 提前获取该学生的初始历史记录条数，并解析它们具体是“第几次”
     wait = WebDriverWait(driver, 10) 
     wait.until(EC.presence_of_element_located((By.CSS_SELECTOR,"#submit")))
+    existing_seq_map = {}
     try:
         tabelnum=driver.find_element(By.CSS_SELECTOR,"#div_talble > div > div > div > div.datagrid-view2 > div.datagrid-body")
         truenum1=tabelnum.find_elements(By.CSS_SELECTOR,"tr.datagrid-row")
         initial_truenum=len(truenum1)
+        for r_idx, row_tr in enumerate(truenum1):
+            row_text = row_tr.text
+            match = re.search(r"第\s*(\d+)\s*次", row_text)
+            if match:
+                seq = int(match.group(1))
+                existing_seq_map[seq] = r_idx
+            else:
+                if (r_idx + 1) not in existing_seq_map:
+                    existing_seq_map[r_idx + 1] = r_idx
     except:
         initial_truenum=0
-    print(f"   [检测] 该学生初始已有 {initial_truenum} 条历史记录。")
+    print(f"   [检测] 该学生初始已有 {initial_truenum} 条历史记录，识别到的次序分布：{list(existing_seq_map.keys())}")
 
     for index, (_, csv_row) in enumerate(student_records.iterrows()):
         sequence = index + 1
         
-        # 🚀 极致优化：如果只新增，且当前索引小于初始记录数，直接秒跳过！不进行任何页面切换和等待
-        if index < initial_truenum and config.get("only_add_new", False):
+        # 🚀 极致优化：如果该次序已存在于网页上，且配置为只新增，直接秒跳过！不进行任何页面切换和等待
+        if sequence in existing_seq_map and config.get("only_add_new", False):
             print(f" - 第 {sequence} 次已有历史记录，极速跳过...")
             continue
             
@@ -166,13 +176,19 @@ for s_index in range(total_students):
         wait = WebDriverWait(driver, 10) 
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR,"#submit")))
         
-        if index < initial_truenum:
+        if sequence in existing_seq_map:
             # 修改分支：只有当真的需要点“修改”按钮时，才必须等待表格彻底加载完毕以获取行元素
             time.sleep(3)
             tabelnum=driver.find_element(By.CSS_SELECTOR,"#div_talble > div > div > div > div.datagrid-view2 > div.datagrid-body")
             truenum1=tabelnum.find_elements(By.CSS_SELECTOR,"tr.datagrid-row")
             print(f" - 正在修改第 {sequence} 次已有历史记录...")
-            row_tr = truenum1[index]
+            
+            row_idx = existing_seq_map[sequence]
+            try:
+                row_tr = truenum1[row_idx]
+            except IndexError:
+                print(f"无法找到对应的表格行进行修改，跳过。")
+                continue
             date_str = ""
             tds = row_tr.find_elements(By.TAG_NAME, "td")
             for td in tds:
