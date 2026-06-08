@@ -154,6 +154,10 @@ for s_index in range(total_students):
         sequence = index + 1
         
         if index < truenum:
+            if config.get("only_add_new", False):
+                print(f" - 第 {sequence} 次已有历史记录，根据配置跳过修改...")
+                continue
+                
             print(f" - 正在修改第 {sequence} 次已有历史记录...")
             row_tr = truenum1[index]
             date_str = ""

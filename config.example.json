@@ -1,5 +1,6 @@
 {
   "deepseek_api_key": "",
   "cnki_username": "",
-  "cnki_password": ""
+  "cnki_password": "",
+  "only_add_new": false
 }
