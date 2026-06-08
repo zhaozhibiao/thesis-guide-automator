@@ -290,6 +290,8 @@ for s_index in range(total_students):
             driver.execute_script(js_code, inputweek, week)
             time.sleep(0.5)
             
+            # 重新获取 textboxes，因为前面的 JS 可能触发了 EasyUI 重绘 DOM，导致之前的元素变为 stale
+            textboxes = driver.find_elements(By.CSS_SELECTOR,".textbox-text")
             inputcontent = None
             for tb in textboxes:
                 if tb.tag_name.lower() == 'textarea' or tb.size.get('height', 0) > 40:
