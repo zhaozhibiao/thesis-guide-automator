@@ -232,15 +232,26 @@ for s_index in range(total_students):
             textboxes = driver.find_elements(By.CSS_SELECTOR,".textbox-text")
             
             inputweek = textboxes[0]
+            
+            # 先用 send_keys 模拟真实输入
+            inputweek.click()
+            inputweek.clear()
+            inputweek.send_keys(week)
+            
+            # 再用增强版 JS 兜底触发和赋值隐藏域，防止 EasyUI 验证不通过
             js_code = """
                 arguments[0].classList.remove('textbox-prompt');
                 arguments[0].value = arguments[1];
-                var hidden = arguments[0].parentNode.querySelector('input.textbox-value');
-                if(hidden) hidden.value = arguments[1];
+                var hidden1 = arguments[0].parentNode.querySelector('input[type="hidden"]');
+                var hidden2 = arguments[0].parentNode.parentNode.querySelector('input[type="hidden"]');
+                if(hidden1) hidden1.value = arguments[1];
+                if(hidden2) hidden2.value = arguments[1];
                 arguments[0].dispatchEvent(new Event('input', { bubbles: true }));
                 arguments[0].dispatchEvent(new Event('change', { bubbles: true }));
+                arguments[0].dispatchEvent(new Event('blur', { bubbles: true }));
             """
             driver.execute_script(js_code, inputweek, week)
+            time.sleep(0.5)
             
             inputcontent = None
             for tb in textboxes:
