@@ -175,12 +175,15 @@ for s_index in range(total_students):
         
         wait = WebDriverWait(driver, 10) 
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR,"#submit")))
-        
+        #修复了只有修改数据无法写入的问题，原因是原本的修改时，没有等待表格数据刷新，导致修改了旧数据
         if sequence in existing_seq_map:
             # 修改分支：只有当真的需要点“修改”按钮时，才必须等待表格彻底加载完毕以获取行元素
-            time.sleep(3)
-            tabelnum=driver.find_element(By.CSS_SELECTOR,"#div_talble > div > div > div > div.datagrid-view2 > div.datagrid-body")
-            truenum1=tabelnum.find_elements(By.CSS_SELECTOR,"tr.datagrid-row")
+            print("   等待表格数据刷新...")
+            wait_grid = WebDriverWait(driver, 20)
+            wait_grid.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".datagrid-view2 .datagrid-body tr.datagrid-row")))
+            time.sleep(1)
+            tabelnum = driver.find_element(By.CSS_SELECTOR, ".datagrid-view2 .datagrid-body")
+            truenum1 = tabelnum.find_elements(By.CSS_SELECTOR,"tr.datagrid-row")
             print(f" - 正在修改第 {sequence} 次已有历史记录...")
             
             row_idx = existing_seq_map[sequence]
@@ -189,18 +192,6 @@ for s_index in range(total_students):
             except IndexError:
                 print(f"无法找到对应的表格行进行修改，跳过。")
                 continue
-            date_str = ""
-            tds = row_tr.find_elements(By.TAG_NAME, "td")
-            for td in tds:
-                match = re.search(r"(\d{4})[-/年.]\s*0*(\d{1,2})[-/月.]\s*0*(\d{1,2})", td.text)
-                if match:
-                    year, month, day = int(match.group(1)), int(match.group(2)), int(match.group(3))
-                    if 1 <= month <= 6 and year != 2026:
-                        date_str = f"2026-{month:02d}-{day:02d}"
-                    elif month == 12 and year != 2025:
-                        date_str = f"2025-{month:02d}-{day:02d}"
-                    break
-            
             edit_btns = row_tr.find_elements(By.XPATH, ".//a[contains(text(), '修改') or contains(@title, '修改')]")
             if edit_btns:
                 driver.execute_script("arguments[0].click();", edit_btns[0])
@@ -214,22 +205,36 @@ for s_index in range(total_students):
             # 强行等待 3 秒，确保修改弹窗里的 EasyUI 插件完全初始化完毕，防止异步加载覆盖已填入的数据
             time.sleep(3)
             
-            # 填入日期
-            if date_str:
-                inputs = driver.find_elements(By.CSS_SELECTOR, "input[type='text']")
-                for inp in inputs:
-                    val = inp.get_attribute('value')
-                    if val and re.search(r"\d{4}-\d{2}-\d{2}", val):
-                        js_code = """
-                            arguments[0].classList.remove('textbox-prompt');
-                            arguments[0].value = arguments[1];
-                            var hidden = arguments[0].parentNode.querySelector('input.textbox-value');
-                            if(hidden) hidden.value = arguments[1];
-                            arguments[0].dispatchEvent(new Event('input', { bubbles: true }));
-                            arguments[0].dispatchEvent(new Event('change', { bubbles: true }));
-                        """
-                        driver.execute_script(js_code, inp, date_str)
-                        break
+            # 填入周次
+            wait.until(EC.presence_of_element_located((By.CSS_SELECTOR,".textbox-text")))
+            textboxes = driver.find_elements(By.CSS_SELECTOR,".textbox-text")
+            if len(textboxes) > 0 and week:
+                inputweek = textboxes[0]
+                js_code = """
+                    var val = arguments[1];
+                    var input = arguments[0];
+                    if(window.jQuery) {
+                        var orig = window.jQuery(input).closest('.textbox').prev();
+                        if(orig.length > 0) {
+                            try {
+                                if(orig.hasClass('combobox-f')) orig.combobox('setValue', val);
+                                else if(orig.hasClass('datebox-f')) orig.datebox('setValue', val);
+                                else orig.textbox('setValue', val);
+                            } catch(e) {}
+                        }
+                    }
+                    input.classList.remove('textbox-prompt');
+                    input.value = val;
+                    var h1 = input.parentNode.querySelector('input[type="hidden"]');
+                    if(h1) { h1.value = val; h1.dispatchEvent(new Event('change', {bubbles:true})); }
+                    var h2 = input.parentNode.parentNode.querySelector('input[type="hidden"]');
+                    if(h2) { h2.value = val; h2.dispatchEvent(new Event('change', {bubbles:true})); }
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                    input.dispatchEvent(new Event('change', { bubbles: true }));
+                    input.dispatchEvent(new Event('blur', { bubbles: true }));
+                """
+                driver.execute_script(js_code, inputweek, week)
+                time.sleep(0.5)
             
             # 填入文本
             wait.until(EC.presence_of_element_located((By.CSS_SELECTOR,".textbox-text")))
