@@ -126,36 +126,69 @@ for s_index in range(total_students):
     wait = WebDriverWait(driver, 20)
     if filage==0:
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR,'[title="学生指导记录"]')))
-        frame1 = driver.find_element(By.CSS_SELECTOR,'[title="学生指导记录"]')
+        frame1 = driver.find_elements(By.CSS_SELECTOR,'[title="学生指导记录"]')[-1]
     else:
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR,'[title="添加学生指导记录"]')))
-        frame1 = driver.find_element(By.CSS_SELECTOR,'[title="添加学生指导记录"]')
+        frame1 = driver.find_elements(By.CSS_SELECTOR,'[title="添加学生指导记录"]')[-1]
     
     driver.switch_to.frame(frame1)
+    time.sleep(3) # 等待当前学生表格数据加载
     
+    # 提前获取该学生的初始历史记录条数，并解析它们具体是“第几次”
+    wait = WebDriverWait(driver, 10) 
+    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR,"#submit")))
+    existing_seq_map = {}
+    try:
+        tabelnum=driver.find_element(By.CSS_SELECTOR,"#div_talble > div > div > div > div.datagrid-view2 > div.datagrid-body")
+        truenum1=tabelnum.find_elements(By.CSS_SELECTOR,"tr.datagrid-row")
+        initial_truenum=len(truenum1)
+        for r_idx, row_tr in enumerate(truenum1):
+            row_text = row_tr.text
+            match = re.search(r"第\s*(\d+)\s*次", row_text)
+            if match:
+                seq = int(match.group(1))
+                existing_seq_map[seq] = r_idx
+            else:
+                if (r_idx + 1) not in existing_seq_map:
+                    existing_seq_map[r_idx + 1] = r_idx
+    except:
+        initial_truenum=0
+    print(f"   [检测] 该学生初始已有 {initial_truenum} 条历史记录，识别到的次序分布：{list(existing_seq_map.keys())}")
 
     for index, (_, csv_row) in enumerate(student_records.iterrows()):
+        sequence = index + 1
+        
+        # 🚀 极致优化：如果该次序已存在于网页上，且配置为只新增，直接秒跳过！不进行任何页面切换和等待
+        if sequence in existing_seq_map and config.get("only_add_new", False):
+            print(f" - 第 {sequence} 次已有历史记录，极速跳过...")
+            continue
+            
         week = str(csv_row['周次']) if pd.notna(csv_row['周次']) else ""
         generated_content = str(csv_row['AI扩写结果']) if pd.notna(csv_row['AI扩写结果']) else ""
         
         driver.switch_to.default_content()
         if filage==0:
-            frame1 = driver.find_element(By.CSS_SELECTOR,'[title="学生指导记录"]')
+            frame1 = driver.find_elements(By.CSS_SELECTOR,'[title="学生指导记录"]')[-1]
         else:
-            frame1 = driver.find_element(By.CSS_SELECTOR,'[title="添加学生指导记录"]')
+            frame1 = driver.find_elements(By.CSS_SELECTOR,'[title="添加学生指导记录"]')[-1]
         driver.switch_to.frame(frame1)
         
         wait = WebDriverWait(driver, 10) 
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR,"#submit")))
-        tabelnum=driver.find_element(By.CSS_SELECTOR,"#div_talble > div > div > div > div.datagrid-view2 > div.datagrid-body")
-        truenum1=tabelnum.find_elements(By.CSS_SELECTOR,"tr.datagrid-row")
-        truenum=len(truenum1)
-
-        sequence = index + 1
         
-        if index < truenum:
+        if sequence in existing_seq_map:
+            # 修改分支：只有当真的需要点“修改”按钮时，才必须等待表格彻底加载完毕以获取行元素
+            time.sleep(3)
+            tabelnum=driver.find_element(By.CSS_SELECTOR,"#div_talble > div > div > div > div.datagrid-view2 > div.datagrid-body")
+            truenum1=tabelnum.find_elements(By.CSS_SELECTOR,"tr.datagrid-row")
             print(f" - 正在修改第 {sequence} 次已有历史记录...")
-            row_tr = truenum1[index]
+            
+            row_idx = existing_seq_map[sequence]
+            try:
+                row_tr = truenum1[row_idx]
+            except IndexError:
+                print(f"无法找到对应的表格行进行修改，跳过。")
+                continue
             date_str = ""
             tds = row_tr.find_elements(By.TAG_NAME, "td")
             for td in tds:
@@ -178,7 +211,8 @@ for s_index in range(total_students):
             wait.until(EC.presence_of_element_located((By.XPATH, '//iframe[contains(@title, "修改")]')))
             edit_frame = driver.find_element(By.XPATH, '//iframe[contains(@title, "修改")]')
             driver.switch_to.frame(edit_frame)
-            time.sleep(1)
+            # 强行等待 3 秒，确保修改弹窗里的 EasyUI 插件完全初始化完毕，防止异步加载覆盖已填入的数据
+            time.sleep(3)
             
             # 填入日期
             if date_str:
@@ -209,7 +243,32 @@ for s_index in range(total_students):
                 inputcontent = textboxes[1]
                 
             if inputcontent:
-                driver.execute_script("arguments[0].value = arguments[1]; var hidden = arguments[0].parentNode.parentNode.querySelector('input[type=hidden]'); if(hidden) hidden.value = arguments[1];", inputcontent, generated_content)
+                # 使用彻底的 JS 和 EasyUI 原生方法赋值，避免不可交互元素的报错
+                js_code = """
+                    var val = arguments[1];
+                    var input = arguments[0];
+                    if(window.jQuery) {
+                        var orig = window.jQuery(input).closest('.textbox').prev();
+                        if(orig.length > 0) {
+                            try {
+                                if(orig.hasClass('combobox-f')) orig.combobox('setValue', val);
+                                else if(orig.hasClass('datebox-f')) orig.datebox('setValue', val);
+                                else orig.textbox('setValue', val);
+                            } catch(e) {}
+                        }
+                    }
+                    input.classList.remove('textbox-prompt');
+                    input.value = val;
+                    var h1 = input.parentNode.querySelector('input[type="hidden"]');
+                    if(h1) { h1.value = val; h1.dispatchEvent(new Event('change', {bubbles:true})); }
+                    var h2 = input.parentNode.parentNode.querySelector('input[type="hidden"]');
+                    if(h2) { h2.value = val; h2.dispatchEvent(new Event('change', {bubbles:true})); }
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                    input.dispatchEvent(new Event('change', { bubbles: true }));
+                    input.dispatchEvent(new Event('blur', { bubbles: true }));
+                """
+                driver.execute_script(js_code, inputcontent, generated_content)
+                time.sleep(0.5)
                 
             submit_btn = driver.find_element(By.CSS_SELECTOR,"#submit_uploading")
             driver.execute_script("arguments[0].click();", submit_btn)
@@ -221,23 +280,45 @@ for s_index in range(total_students):
             driver.execute_script("arguments[0].click();", tianjiabutton)
             
             driver.switch_to.default_content()
-            frame1 = driver.find_element(By.CSS_SELECTOR,'[title="添加指导记录"]')
+            frame1 = driver.find_elements(By.CSS_SELECTOR,'[title="添加指导记录"]')[-1]
             driver.switch_to.frame(frame1)
+            # 强行等待 3 秒，确保新增弹窗里的 EasyUI 插件完全初始化完毕，防止异步加载覆盖已填入的数据
+            time.sleep(3)
             wait = WebDriverWait(driver, 10) 
             wait.until(EC.presence_of_element_located((By.CSS_SELECTOR,".textbox-text")))
             textboxes = driver.find_elements(By.CSS_SELECTOR,".textbox-text")
             
             inputweek = textboxes[0]
+            
+            # 使用彻底的 JS 和 EasyUI 原生方法赋值，避免不可交互元素的报错
             js_code = """
-                arguments[0].classList.remove('textbox-prompt');
-                arguments[0].value = arguments[1];
-                var hidden = arguments[0].parentNode.querySelector('input.textbox-value');
-                if(hidden) hidden.value = arguments[1];
-                arguments[0].dispatchEvent(new Event('input', { bubbles: true }));
-                arguments[0].dispatchEvent(new Event('change', { bubbles: true }));
+                var val = arguments[1];
+                var input = arguments[0];
+                if(window.jQuery) {
+                    var orig = window.jQuery(input).closest('.textbox').prev();
+                    if(orig.length > 0) {
+                        try {
+                            if(orig.hasClass('combobox-f')) orig.combobox('setValue', val);
+                            else if(orig.hasClass('datebox-f')) orig.datebox('setValue', val);
+                            else orig.textbox('setValue', val);
+                        } catch(e) {}
+                    }
+                }
+                input.classList.remove('textbox-prompt');
+                input.value = val;
+                var h1 = input.parentNode.querySelector('input[type="hidden"]');
+                if(h1) { h1.value = val; h1.dispatchEvent(new Event('change', {bubbles:true})); }
+                var h2 = input.parentNode.parentNode.querySelector('input[type="hidden"]');
+                if(h2) { h2.value = val; h2.dispatchEvent(new Event('change', {bubbles:true})); }
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+                input.dispatchEvent(new Event('blur', { bubbles: true }));
             """
             driver.execute_script(js_code, inputweek, week)
+            time.sleep(0.5)
             
+            # 重新获取 textboxes，因为前面的 JS 可能触发了 EasyUI 重绘 DOM，导致之前的元素变为 stale
+            textboxes = driver.find_elements(By.CSS_SELECTOR,".textbox-text")
             inputcontent = None
             for tb in textboxes:
                 if tb.tag_name.lower() == 'textarea' or tb.size.get('height', 0) > 40:
@@ -247,22 +328,44 @@ for s_index in range(total_students):
                 inputcontent = textboxes[1]
             
             if inputcontent:
+                # 使用彻底的 JS 和 EasyUI 原生方法赋值，避免不可交互元素的报错
                 js_code = """
-                    arguments[0].classList.remove('textbox-prompt');
-                    arguments[0].value = arguments[1];
-                    var hidden = arguments[0].parentNode.querySelector('input.textbox-value');
-                    if(hidden) hidden.value = arguments[1];
-                    arguments[0].dispatchEvent(new Event('input', { bubbles: true }));
-                    arguments[0].dispatchEvent(new Event('change', { bubbles: true }));
+                    var val = arguments[1];
+                    var input = arguments[0];
+                    if(window.jQuery) {
+                        var orig = window.jQuery(input).closest('.textbox').prev();
+                        if(orig.length > 0) {
+                            try {
+                                if(orig.hasClass('combobox-f')) orig.combobox('setValue', val);
+                                else if(orig.hasClass('datebox-f')) orig.datebox('setValue', val);
+                                else orig.textbox('setValue', val);
+                            } catch(e) {}
+                        }
+                    }
+                    input.classList.remove('textbox-prompt');
+                    input.value = val;
+                    var h1 = input.parentNode.querySelector('input[type="hidden"]');
+                    if(h1) { h1.value = val; h1.dispatchEvent(new Event('change', {bubbles:true})); }
+                    var h2 = input.parentNode.parentNode.querySelector('input[type="hidden"]');
+                    if(h2) { h2.value = val; h2.dispatchEvent(new Event('change', {bubbles:true})); }
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                    input.dispatchEvent(new Event('change', { bubbles: true }));
+                    input.dispatchEvent(new Event('blur', { bubbles: true }));
                 """
                 driver.execute_script(js_code, inputcontent, generated_content)
+                time.sleep(0.5)
             
             submitbutton=driver.find_element(By.CSS_SELECTOR,"#submit_uploading")
             driver.execute_script("arguments[0].click();", submitbutton)
             time.sleep(2)
 
-    # 处理完该学生，刷新学生列表
+    # 处理完该学生，关闭其弹窗并刷新列表
     driver.switch_to.default_content()
+    close_btns = driver.find_elements(By.CSS_SELECTOR, ".panel-tool-close")
+    if close_btns:
+        driver.execute_script("arguments[0].click();", close_btns[-1])
+    time.sleep(1)
+    
     wait = WebDriverWait(driver, 10) 
     wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR,'#nav > li:nth-child(5) > ul > li:nth-child(3) > a')))
     zhidao=driver.find_element(By.CSS_SELECTOR,'#nav > li:nth-child(5) > ul > li:nth-child(3) > a')
@@ -272,7 +375,7 @@ for s_index in range(total_students):
     wait.until(EC.presence_of_element_located((By.CSS_SELECTOR,'[title="指导教师提交指导记录"]')))
     frame = driver.find_element(By.CSS_SELECTOR,'[title="指导教师提交指导记录"]')
     driver.switch_to.frame(frame)
-    time.sleep(2) 
+    time.sleep(2)
 
 print("所有修改/新增任务已顺利完成！")
 driver.quit()
